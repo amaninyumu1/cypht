@@ -160,6 +160,50 @@ class Hm_Handler_sieve_delete_filter extends Hm_Handler_Module {
     }
 }
 
+/**
+ * @subpackage sievefilterstoggle/handler
+ */
+class Hm_Handler_sieve_toggle_script_state extends Hm_Handler_Module {
+    public function process() {
+        
+        list($success, $form) = $this->process_form(array('imap_account', 'script_state', 'sieve_script_name'));
+        if (!$success) {
+            return;
+        }
+        $imap_account = Hm_IMAP_List::dump($form['imap_account']);
+        
+        $factory = get_sieve_client_factory($this->config);
+        
+        try {
+            $client = $factory->init($this->user_config, $imap_account);
+
+            $scripts = $client->listScripts();
+            foreach ($scripts as $key => $script) {
+                if ($script == 'main_script') {
+                    $client->removeScripts('main_script');
+                }
+                if ($script == $form['sieve_script_name']) {
+                    if (! $form['script_state']) {
+                        unset($scripts[$key]);
+                    }
+                    $script = $client->getScript($script);
+                    $lines = explode("\n", $script);
+                }
+            }
+            $scripts = $client->listScripts();
+            $main_script = generate_main_script($scripts);
+
+            save_main_script($client, $main_script, $scripts);
+            $client->activateScript('main_script');
+            $client->close();
+
+            $state_msg = $form['script_state'] ? 'enabled': 'disabled';
+            Hm_Msgs::add("Script $state_msg");
+        } catch (Exception $e) {
+            Hm_Msgs::add("ERRSieve: {$e->getMessage()}");
+        }
+    }
+}
 
 /**
  * @subpackage sievefilters/handler
